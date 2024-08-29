@@ -1,111 +1,91 @@
-import time
-import pyautogui
 import keyboard
-from mss import mss
-from PIL import Image
-
-IMG_DIR = "imgCache/"
-
-PERCENTAGE = None
+from time import sleep
+from threading import Thread
 
 
-def getResKeepResolution(width, height, targetWidth):
-    global PERCENTAGE
-    PERCENTAGE = 100 / width * targetWidth
-    pheight = height / 100 * PERCENTAGE
-
-    return (targetWidth, int(pheight))
+START_KEY = "space"
+STOP_KEY = "ctrl+c"
 
 
-def getScreenshot():
-    return mss().shot(output=IMG_DIR + "screenshot.png")
+CFG_PATH = "./config/legendStyle.cfg"
+
+UPGRADE_TIME = 7
+DELAY_BETWEEN_MOVEMENT = 0.5
 
 
-def resize(file, rate):
-    img = Image.open(file)
-
-    resValues = getResKeepResolution(img.size[0], img.size[1], rate)
-    resized = img.resize(resValues, Image.Resampling.BILINEAR)
-
-    resDirectory = IMG_DIR + "resized.png"
-
-    resized.save(resDirectory)
-    return resDirectory
+CANCELATION_PENDING = False
 
 
-def scaleUpCoord(x, y):
-    pX = x / PERCENTAGE * 100
-    pY = y / PERCENTAGE * 100
+def readConfig():
+    fileContent = []
 
-    return (pX, pY)
+    file = open(CFG_PATH, 'r')
 
+    for line in file:
+        if line.startswith("#"):
+            continue
 
-def isNotUpgraded(colors):
-    # red
-    if (colors[1] < 15 and colors[2] < 15):
-        if (colors[0] > 100 and colors[0] < 130):
-            return True
+        if len(line) == 0 or line == "\n":
+            continue
 
-    # purple / dark blue
-    if (colors[0] < 50 and colors[1] < 30):
-        if (colors[2] > 100 and colors[2] < 130):
-            return True
+        fileContent.append(line.replace("\n", ""))
 
-    # light blue
-    if (colors[0] < 10):
-        if (colors[1] > 100 and colors[1] < 130):
-            if (colors[2] > 100 and colors[1] < 130):
-                return True
+    file.close()
 
-    # yellow
-    if (colors[2] < 20):
-        if (colors[0] > 100 and colors[0] < 130):
-            if (colors[1] > 90 and colors[1] < 100):
-                return True
-
-    return False
+    return fileContent
 
 
-def getNotUpgradedPixels(file):
-    img = Image.open(file)
+def runMacros(cfgList):
+    global CANCELATION_PENDING
 
-    imgList = []
+    for x in cfgList:
+        if CANCELATION_PENDING:
+            return
 
-    for x in range(img.size[0]):
-        for y in range(img.size[1]):
-            if isNotUpgraded(img.getpixel((x, y))):
-                print(img.getpixel((x, y)))
-                imgList.append((x, y))
+        cfg = x.split(",")
 
-    return imgList
+        print("pressing " + cfg[0] + " with " + cfg[1] + " test " + str(cfg[1] != "u"))
+        keyboard.press(cfg[0])
+        sleep(0.1)
+        keyboard.release(cfg[0])
+
+        sleep(DELAY_BETWEEN_MOVEMENT)
+
+        continue
+
+        if cfg[1] != "u":
+            continue
+
+        keyboard.press("e")
+        sleep(UPGRADE_TIME)
+        keyboard.release("e")
+
+
+def startMacroLoop(cfgList):
+    global CANCELATION_PENDING
+
+    while not CANCELATION_PENDING:
+        runMacros(cfgList)
+
+
+def cancelCallback():
+    global CANCELATION_PENDING
+
+    print("Cancellation triggered")
+    CANCELATION_PENDING = True
 
 
 def init():
-    for x in range(100):
-        keyboard.wait("shift+space")
+    global CANCELATION_PENDING
+    keyboard.add_hotkey(STOP_KEY, cancelCallback)
 
-        colorsExist = True
+    while True:
+        CANCELATION_PENDING = False
+        keyboard.wait(START_KEY)
+        fileContent = readConfig()
 
-        while colorsExist:
-            image = getScreenshot()
-            resized = resize(image, 500)
-
-            pixels = getNotUpgradedPixels(resized)
-
-            if (len(pixels)) > 0:
-                colorsExist = True
-                coord = pixels[0]
-
-                scaled = scaleUpCoord(coord[0], coord[1])
-                pyautogui.moveTo(1080 + scaled[0], scaled[1])
-                pyautogui.mouseDown()
-                time.sleep(0.5)
-                pyautogui.mouseUp()
-                time.sleep(1)
-
-                pyautogui.mouseDown()
-                time.sleep(5)
-                pyautogui.mouseUp()
+        macroThread = Thread(target=startMacroLoop, args=(fileContent, ))
+        macroThread.start()
 
 
 if __name__ == "__main__":
