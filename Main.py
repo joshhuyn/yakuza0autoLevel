@@ -51,8 +51,6 @@ def runMacros(cfgList):
 
         sleep(DELAY_BETWEEN_MOVEMENT)
 
-        continue
-
         if cfg[1] != "u":
             continue
 
